@@ -3,12 +3,12 @@ import db from '../database.js';
 
 const router = Router();
 
-router.get('/bill/:billId', (req, res) => {
-  const attachments = db.prepare('SELECT id, bill_id, filename, content_type, uploaded_at FROM bill_attachments WHERE bill_id = ? ORDER BY uploaded_at DESC').all(req.params.billId);
+router.get('/bill/:billId', async (req, res) => {
+  const attachments = await db.prepare('SELECT id, bill_id, filename, content_type, uploaded_at FROM bill_attachments WHERE bill_id = ? ORDER BY uploaded_at DESC').all(req.params.billId);
   res.json(attachments);
 });
 
-router.post('/bill/:billId', (req, res) => {
+router.post('/bill/:billId', async (req, res) => {
   const { filename, content_type, file_data } = req.body;
   if (!filename || !file_data) return res.status(400).json({ error: 'Arquivo obrigatório' });
 
@@ -16,14 +16,14 @@ router.post('/bill/:billId', (req, res) => {
   const dataSize = Buffer.byteLength(file_data, 'utf8') * 0.75;
   if (dataSize > maxSize) return res.status(400).json({ error: 'Arquivo muito grande (máx 5MB)' });
 
-  const result = db.prepare('INSERT INTO bill_attachments (bill_id, filename, content_type, file_data) VALUES (?, ?, ?, ?)').run(
+  const result = await db.prepare('INSERT INTO bill_attachments (bill_id, filename, content_type, file_data) VALUES (?, ?, ?, ?)').run(
     req.params.billId, filename, content_type || '', file_data
   );
   res.status(201).json({ id: result.lastInsertRowid, filename });
 });
 
-router.get('/:id/download', (req, res) => {
-  const att = db.prepare('SELECT * FROM bill_attachments WHERE id = ?').get(req.params.id);
+router.get('/:id/download', async (req, res) => {
+  const att = await db.prepare('SELECT * FROM bill_attachments WHERE id = ?').get(req.params.id);
   if (!att) return res.status(404).json({ error: 'Anexo não encontrado' });
 
   const base64Data = att.file_data.includes(',') ? att.file_data.split(',')[1] : att.file_data;
@@ -33,8 +33,8 @@ router.get('/:id/download', (req, res) => {
   res.send(buffer);
 });
 
-router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM bill_attachments WHERE id = ?').run(req.params.id);
+router.delete('/:id', async (req, res) => {
+  await db.prepare('DELETE FROM bill_attachments WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 

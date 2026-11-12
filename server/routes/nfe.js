@@ -70,7 +70,7 @@ function parseNfe(xmlContent) {
   return { supplier, nfeNumber, totalValue, products, installments };
 }
 
-router.post('/parse', upload.single('xml'), (req, res) => {
+router.post('/parse', upload.single('xml'), async (req, res) => {
   try {
     let xmlContent;
     if (req.file) {
@@ -87,53 +87,76 @@ router.post('/parse', upload.single('xml'), (req, res) => {
   }
 });
 
-router.post('/import', (req, res) => {
+router.post('/import', async (req, res) => {
   const { supplier, nfeNumber, products, installments, category_id, cost_center_id } = req.body;
 
   const billIds = [];
   const inventoryIds = [];
 
-  const insertBill = db.prepare(`INSERT INTO bills (description, supplier, amount, due_date, status, category_id, cost_center_id, nfe_number, created_by) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)`);
-  const insertInventory = db.prepare('INSERT INTO inventory (name, category, unit, quantity, unit_cost, total_cost, supplier, nfe_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET quantity = quantity + excluded.quantity, total_cost = total_cost + excluded.total_cost, unit_cost = (total_cost + excluded.total_cost) / (quantity + excluded.quantity), updated_at = CURRENT_TIMESTAMP');
-  const insertMovement = db.prepare('INSERT INTO inventory_movements (inventory_id, type, quantity, unit_cost, notes) VALUES (?, ?, ?, ?, ?)');
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const transaction = db.transaction(() => {
     for (const inst of installments) {
       const desc = `NF ${nfeNumber} - Parcela ${inst.number}`;
-      const result = insertBill.run(desc, supplier, inst.amount, inst.due_date, category_id || null, cost_center_id || null, nfeNumber, req.user.id);
-      billIds.push(result.lastInsertRowid);
+      const result = await client.query(
+        `INSERT INTO bills (description, supplier, amount, due_date, status, category_id, cost_center_id, nfe_number, created_by)
+         VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8) RETURNING id`,
+        [desc, supplier, inst.amount, inst.due_date, category_id || null, cost_center_id || null, nfeNumber, req.user.id]
+      );
+      const billId = result.rows[0].id;
+      billIds.push(billId);
 
       if (cost_center_id) {
-        db.prepare('INSERT INTO cost_center_items (cost_center_id, bill_id, description, amount, type) VALUES (?, ?, ?, ?, ?)')
-          .run(cost_center_id, result.lastInsertRowid, desc, inst.amount, 'material');
+        await client.query(
+          'INSERT INTO cost_center_items (cost_center_id, bill_id, description, amount, type) VALUES ($1, $2, $3, $4, $5)',
+          [cost_center_id, billId, desc, inst.amount, 'material']
+        );
       }
     }
 
     for (const prod of products) {
-      const existing = db.prepare('SELECT id FROM inventory WHERE name = ? AND supplier = ?').get(prod.name, supplier);
+      const existingResult = await client.query(
+        'SELECT id FROM inventory WHERE name = $1 AND supplier = $2', [prod.name, supplier]
+      );
+      const existing = existingResult.rows[0];
+
       if (existing) {
-        const item = db.prepare('SELECT * FROM inventory WHERE id = ?').get(existing.id);
+        const itemResult = await client.query('SELECT * FROM inventory WHERE id = $1', [existing.id]);
+        const item = itemResult.rows[0];
         const newQty = item.quantity + prod.quantity;
         const newTotal = item.total_cost + prod.total;
         const newUnitCost = newQty > 0 ? newTotal / newQty : 0;
-        db.prepare('UPDATE inventory SET quantity = ?, unit_cost = ?, total_cost = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(newQty, newUnitCost, newTotal, existing.id);
-        insertMovement.run(existing.id, 'in', prod.quantity, prod.unit_cost, `NF ${nfeNumber}`);
+        await client.query(
+          'UPDATE inventory SET quantity = $1, unit_cost = $2, total_cost = $3, updated_at = NOW() WHERE id = $4',
+          [newQty, newUnitCost, newTotal, existing.id]
+        );
+        await client.query(
+          'INSERT INTO inventory_movements (inventory_id, type, quantity, unit_cost, notes) VALUES ($1, $2, $3, $4, $5)',
+          [existing.id, 'in', prod.quantity, prod.unit_cost, `NF ${nfeNumber}`]
+        );
         inventoryIds.push(existing.id);
       } else {
-        const result = db.prepare('INSERT INTO inventory (name, category, unit, quantity, unit_cost, total_cost, supplier, nfe_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-          .run(prod.name, '', prod.unit, prod.quantity, prod.unit_cost, prod.total, supplier, nfeNumber);
-        insertMovement.run(result.lastInsertRowid, 'in', prod.quantity, prod.unit_cost, `NF ${nfeNumber}`);
-        inventoryIds.push(result.lastInsertRowid);
+        const insResult = await client.query(
+          'INSERT INTO inventory (name, category, unit, quantity, unit_cost, total_cost, supplier, nfe_number) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+          [prod.name, '', prod.unit, prod.quantity, prod.unit_cost, prod.total, supplier, nfeNumber]
+        );
+        const newId = insResult.rows[0].id;
+        await client.query(
+          'INSERT INTO inventory_movements (inventory_id, type, quantity, unit_cost, notes) VALUES ($1, $2, $3, $4, $5)',
+          [newId, 'in', prod.quantity, prod.unit_cost, `NF ${nfeNumber}`]
+        );
+        inventoryIds.push(newId);
       }
     }
-  });
 
-  try {
-    transaction();
+    await client.query('COMMIT');
     res.status(201).json({ bills_created: billIds.length, inventory_updated: inventoryIds.length, bill_ids: billIds, inventory_ids: inventoryIds });
   } catch (e) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: 'Erro ao importar: ' + e.message });
+  } finally {
+    client.release();
   }
 });
 

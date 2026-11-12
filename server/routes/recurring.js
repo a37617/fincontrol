@@ -4,18 +4,18 @@ import { logActivity } from './activityLog.js';
 
 const router = Router();
 
-export function autoGenerateRecurring(userId) {
+export async function autoGenerateRecurring(userId) {
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth() + 1;
   const monthStr = String(m).padStart(2, '0');
 
-  const templates = db.prepare('SELECT * FROM recurring_bills').all();
+  const templates = await db.prepare('SELECT * FROM recurring_bills').all();
   if (templates.length === 0) return 0;
 
   let generated = 0;
   for (const tpl of templates) {
-    const existing = db.prepare(
+    const existing = await db.prepare(
       "SELECT id FROM bills WHERE description = ? AND due_date LIKE ? AND is_recurring = 1"
     ).get(tpl.description, `${y}-${monthStr}-%`);
     if (existing) continue;
@@ -32,7 +32,7 @@ export function autoGenerateRecurring(userId) {
     }
 
     const amt = tpl.value_type === 'variable' ? 0 : tpl.amount;
-    db.prepare(
+    await db.prepare(
       `INSERT INTO bills (description, supplier, amount, due_date, status, category_id, is_recurring, recurring_day, payment_source, value_type, created_by)
        VALUES (?, ?, ?, ?, 'pending', ?, 1, ?, ?, ?, ?)`
     ).run(tpl.description, tpl.supplier || '', amt, dueDate, tpl.category_id || null, tpl.due_day, tpl.payment_source || '', tpl.value_type || 'fixed', userId || 1);
@@ -41,8 +41,8 @@ export function autoGenerateRecurring(userId) {
   return generated;
 }
 
-router.get('/', (req, res) => {
-  const templates = db.prepare(`
+router.get('/', async (req, res) => {
+  const templates = await db.prepare(`
     SELECT rb.*, c.name as category_name, c.color as category_color
     FROM recurring_bills rb
     LEFT JOIN categories c ON rb.category_id = c.id
@@ -51,31 +51,31 @@ router.get('/', (req, res) => {
   res.json(templates);
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { description, amount, due_day, category_id, supplier, value_type, payment_source } = req.body;
   if (!description) return res.status(400).json({ error: 'Descrição é obrigatória' });
-  const result = db.prepare(
+  const result = await db.prepare(
     'INSERT INTO recurring_bills (description, amount, due_day, category_id, supplier, value_type) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(description, parseFloat(amount) || 0, due_day ?? 0, category_id || null, supplier || '', value_type || 'fixed');
 
-  db.prepare('UPDATE recurring_bills SET payment_source = ? WHERE id = ?').run(payment_source || '', result.lastInsertRowid);
+  await db.prepare('UPDATE recurring_bills SET payment_source = ? WHERE id = ?').run(payment_source || '', result.lastInsertRowid);
 
   logActivity(req.user.id, req.user.email, 'create', 'bill', result.lastInsertRowid, `Criou conta fixa: ${description}`);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM recurring_bills WHERE id = ?').run(req.params.id);
+router.delete('/:id', async (req, res) => {
+  await db.prepare('DELETE FROM recurring_bills WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-router.post('/generate', (req, res) => {
+router.post('/generate', async (req, res) => {
   const { year, month } = req.body;
   const y = year || new Date().getFullYear();
   const m = month || (new Date().getMonth() + 1);
   const monthStr = String(m).padStart(2, '0');
 
-  const templates = db.prepare('SELECT * FROM recurring_bills').all();
+  const templates = await db.prepare('SELECT * FROM recurring_bills').all();
   if (templates.length === 0) return res.json({ generated: 0 });
 
   let generated = 0;
@@ -91,13 +91,13 @@ router.post('/generate', (req, res) => {
       dueDate = `${y}-${monthStr}-${String(day).padStart(2, '0')}`;
     }
 
-    const existing = db.prepare(
+    const existing = await db.prepare(
       "SELECT id FROM bills WHERE description = ? AND due_date LIKE ? AND is_recurring = 1"
     ).get(tpl.description, `${y}-${monthStr}-%`);
     if (existing) continue;
 
     const amt = tpl.value_type === 'variable' ? 0 : tpl.amount;
-    db.prepare(
+    await db.prepare(
       `INSERT INTO bills (description, supplier, amount, due_date, status, category_id, is_recurring, recurring_day, payment_source, value_type, created_by)
        VALUES (?, ?, ?, ?, 'pending', ?, 1, ?, ?, ?, ?)`
     ).run(tpl.description, tpl.supplier || '', amt, dueDate, tpl.category_id || null, tpl.due_day, tpl.payment_source || '', tpl.value_type || 'fixed', req.user.id);

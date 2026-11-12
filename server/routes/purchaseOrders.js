@@ -6,9 +6,9 @@ import { logActivity } from './activityLog.js';
 
 const router = Router();
 
-function getNextOrderNumber() {
+async function getNextOrderNumber() {
   let num;
-  const last = db.prepare("SELECT order_number FROM purchase_orders ORDER BY id DESC LIMIT 1").get();
+  const last = await db.prepare("SELECT order_number FROM purchase_orders ORDER BY id DESC LIMIT 1").get();
   if (!last) {
     num = Math.floor(Math.random() * 9000) + 1000;
   } else {
@@ -18,39 +18,39 @@ function getNextOrderNumber() {
   return `OC-${String(num).padStart(5, '0')}`;
 }
 
-router.get('/', (req, res) => {
-  const orders = db.prepare(`SELECT po.*, s.name as supplier_display_name
+router.get('/', async (req, res) => {
+  const orders = await db.prepare(`SELECT po.*, s.name as supplier_display_name
     FROM purchase_orders po LEFT JOIN suppliers s ON po.supplier_id = s.id
     ORDER BY po.id DESC`).all();
   res.json(orders);
 });
 
-router.get('/company', (req, res) => {
-  const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get();
+router.get('/company', async (req, res) => {
+  const settings = await db.prepare('SELECT * FROM company_settings WHERE id = 1').get();
   res.json(settings || {});
 });
 
-router.put('/company', (req, res) => {
+router.put('/company', async (req, res) => {
   const { name, trade_name, cnpj, ie, phone, email, address, city, state, zip, logo_base64, nfe_email } = req.body;
-  db.prepare(`UPDATE company_settings SET name=?, trade_name=?, cnpj=?, ie=?, phone=?, email=?, address=?, city=?, state=?, zip=?, logo_base64=?, nfe_email=? WHERE id=1`)
+  await db.prepare(`UPDATE company_settings SET name=?, trade_name=?, cnpj=?, ie=?, phone=?, email=?, address=?, city=?, state=?, zip=?, logo_base64=?, nfe_email=? WHERE id=1`)
     .run(name || '', trade_name || '', cnpj || '', ie || '', phone || '', email || '', address || '', city || '', state || '', zip || '', logo_base64 || '', nfe_email || '');
   res.json({ success: true });
 });
 
-router.get('/:id', (req, res) => {
-  const order = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
+router.get('/:id', async (req, res) => {
+  const order = await db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
   if (!order) return res.status(404).json({ error: 'Ordem não encontrada' });
-  const items = db.prepare('SELECT * FROM purchase_order_items WHERE order_id = ?').all(order.id);
+  const items = await db.prepare('SELECT * FROM purchase_order_items WHERE order_id = ?').all(order.id);
   res.json({ ...order, items });
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { supplier_id, supplier_name, supplier_cnpj, supplier_phone, supplier_email, supplier_address, supplier_contact,
     payment_type, payment_condition, freight_type, carrier, freight_value, delivery_deadline, notes, items, buyer_name, delivery_address, discount_percent } = req.body;
 
   if (!supplier_name || !items || items.length === 0) return res.status(400).json({ error: 'Fornecedor e itens são obrigatórios' });
 
-  const order_number = getNextOrderNumber();
+  const order_number = await getNextOrderNumber();
   const discountPct = parseFloat(discount_percent) || 0;
 
   let subtotal = 0;
@@ -64,7 +64,7 @@ router.post('/', (req, res) => {
   const discountValue = (subtotal + ipi_total) * (discountPct / 100);
   const total = subtotal + ipi_total - discountValue + (parseFloat(freight_value) || 0);
 
-  const result = db.prepare(`INSERT INTO purchase_orders (order_number, supplier_id, supplier_name, supplier_cnpj, supplier_phone, supplier_email, supplier_address, supplier_contact,
+  const result = await db.prepare(`INSERT INTO purchase_orders (order_number, supplier_id, supplier_name, supplier_cnpj, supplier_phone, supplier_email, supplier_address, supplier_contact,
     payment_type, payment_condition, freight_type, carrier, freight_value, delivery_deadline, notes, status, subtotal, ipi_total, total, created_by, buyer_name, delivery_address, discount_percent)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`).run(
     order_number, supplier_id || null, supplier_name, supplier_cnpj || '', supplier_phone || '', supplier_email || '', supplier_address || '', supplier_contact || '',
@@ -79,27 +79,27 @@ router.post('/', (req, res) => {
     const itemTotal = qty * price;
     const ipiPct = item.ipi_percent || 0;
     const ipiVal = itemTotal * (ipiPct / 100);
-    db.prepare(`INSERT INTO purchase_order_items (order_id, description, quantity, unit, unit_price, ipi_percent, ipi_value, total)
+    await db.prepare(`INSERT INTO purchase_order_items (order_id, description, quantity, unit, unit_price, ipi_percent, ipi_value, total)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(orderId, item.description, qty, item.unit || 'un', price, ipiPct, ipiVal, itemTotal + ipiVal);
   }
 
   for (const item of items) {
     try {
-      db.prepare('INSERT INTO price_history (supplier_name, supplier_id, item_description, unit_price, date, source, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      await db.prepare('INSERT INTO price_history (supplier_name, supplier_id, item_description, unit_price, date, source, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
         supplier_name, supplier_id || null, item.description, item.unit_price || 0, new Date().toISOString().split('T')[0], 'purchase_order', orderId
       );
     } catch (_) {}
   }
 
-  logActivity(req.user.id, req.user.email, 'create', 'purchase_order', orderId, `Criou OC ${order_number} - ${supplier_name}`);
+  await logActivity(req.user.id, req.user.email, 'create', 'purchase_order', orderId, `Criou OC ${order_number} - ${supplier_name}`);
   res.status(201).json({ id: orderId, order_number });
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   const { supplier_id, supplier_name, supplier_cnpj, supplier_phone, supplier_email, supplier_address, supplier_contact,
     payment_type, payment_condition, freight_type, carrier, freight_value, delivery_deadline, notes, status, items, buyer_name, delivery_address, discount_percent } = req.body;
 
-  const order = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
+  const order = await db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
   if (!order) return res.status(404).json({ error: 'Ordem não encontrada' });
 
   const discountPct = parseFloat(discount_percent) || 0;
@@ -116,7 +116,7 @@ router.put('/:id', (req, res) => {
   const discountValue = (subtotal + ipi_total) * (discountPct / 100);
   const total = subtotal + ipi_total - discountValue + (parseFloat(freight_value) || 0);
 
-  db.prepare(`UPDATE purchase_orders SET supplier_id=?, supplier_name=?, supplier_cnpj=?, supplier_phone=?, supplier_email=?, supplier_address=?, supplier_contact=?,
+  await db.prepare(`UPDATE purchase_orders SET supplier_id=?, supplier_name=?, supplier_cnpj=?, supplier_phone=?, supplier_email=?, supplier_address=?, supplier_contact=?,
     payment_type=?, payment_condition=?, freight_type=?, carrier=?, freight_value=?, delivery_deadline=?, notes=?, status=?,
     subtotal=?, ipi_total=?, total=?, buyer_name=?, delivery_address=?, discount_percent=? WHERE id=?`).run(
     supplier_id || null, supplier_name || order.supplier_name, supplier_cnpj || '', supplier_phone || '', supplier_email || '', supplier_address || '', supplier_contact || '',
@@ -125,14 +125,14 @@ router.put('/:id', (req, res) => {
   );
 
   if (items) {
-    db.prepare('DELETE FROM purchase_order_items WHERE order_id = ?').run(req.params.id);
+    await db.prepare('DELETE FROM purchase_order_items WHERE order_id = ?').run(req.params.id);
     for (const item of items) {
       const qty = item.quantity || 1;
       const price = item.unit_price || 0;
       const itemTotal = qty * price;
       const ipiPct = item.ipi_percent || 0;
       const ipiVal = itemTotal * (ipiPct / 100);
-      db.prepare(`INSERT INTO purchase_order_items (order_id, description, quantity, unit, unit_price, ipi_percent, ipi_value, total)
+      await db.prepare(`INSERT INTO purchase_order_items (order_id, description, quantity, unit, unit_price, ipi_percent, ipi_value, total)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(req.params.id, item.description, qty, item.unit || 'un', price, ipiPct, ipiVal, itemTotal + ipiVal);
     }
   }
@@ -140,26 +140,26 @@ router.put('/:id', (req, res) => {
   res.json({ success: true });
 });
 
-router.patch('/:id/status', (req, res) => {
+router.patch('/:id/status', async (req, res) => {
   const { status } = req.body;
   if (!status) return res.status(400).json({ error: 'Status é obrigatório' });
-  const order = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
+  const order = await db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
   if (!order) return res.status(404).json({ error: 'Ordem não encontrada' });
-  db.prepare('UPDATE purchase_orders SET status = ? WHERE id = ?').run(status, req.params.id);
+  await db.prepare('UPDATE purchase_orders SET status = ? WHERE id = ?').run(status, req.params.id);
   res.json({ success: true });
 });
 
-router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM purchase_order_items WHERE order_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM purchase_orders WHERE id = ?').run(req.params.id);
+router.delete('/:id', async (req, res) => {
+  await db.prepare('DELETE FROM purchase_order_items WHERE order_id = ?').run(req.params.id);
+  await db.prepare('DELETE FROM purchase_orders WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-router.get('/:id/pdf', (req, res) => {
-  const order = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
+router.get('/:id/pdf', async (req, res) => {
+  const order = await db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(req.params.id);
   if (!order) return res.status(404).json({ error: 'Ordem não encontrada' });
-  const items = db.prepare('SELECT * FROM purchase_order_items WHERE order_id = ?').all(order.id);
-  const company = db.prepare('SELECT * FROM company_settings WHERE id = 1').get() || {};
+  const items = await db.prepare('SELECT * FROM purchase_order_items WHERE order_id = ?').all(order.id);
+  const company = await db.prepare('SELECT * FROM company_settings WHERE id = 1').get() || {};
 
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   res.setHeader('Content-Type', 'application/pdf');
@@ -181,7 +181,6 @@ router.get('/:id/pdf', (req, res) => {
     doc.registerFont('Bold', 'Helvetica-Bold');
   }
 
-  // Header
   const headerH = 80;
   doc.rect(40, 40, pageW, headerH).fill('#f0f4ff');
 
@@ -203,7 +202,6 @@ router.get('/:id/pdf', (req, res) => {
 
   let y = 140;
 
-  // Company info
   doc.fillColor(blue).fontSize(10).font('Bold').text('DADOS DA EMPRESA', 55, y);
   y += 16;
   doc.fillColor(dark).fontSize(9).font('Regular');
@@ -225,7 +223,6 @@ router.get('/:id/pdf', (req, res) => {
   doc.moveTo(55, y).lineTo(pageW + 25, y).strokeColor('#e5e7eb').stroke();
   y += 12;
 
-  // Supplier info
   doc.fillColor(blue).fontSize(10).font('Bold').text('FORNECEDOR', 55, y);
   y += 16;
   doc.fillColor(dark).fontSize(9).font('Regular');
@@ -250,7 +247,6 @@ router.get('/:id/pdf', (req, res) => {
   doc.moveTo(55, y).lineTo(pageW + 25, y).strokeColor('#e5e7eb').stroke();
   y += 12;
 
-  // Items table header
   doc.fillColor(blue).fontSize(10).font('Bold').text('ITENS', 55, y);
   y += 18;
 
@@ -297,7 +293,6 @@ router.get('/:id/pdf', (req, res) => {
     y += rowH;
   });
 
-  // Totals
   y += 6;
   doc.moveTo(380, y).lineTo(pageW + 25, y).strokeColor('#e5e7eb').stroke();
   y += 8;
@@ -328,7 +323,6 @@ router.get('/:id/pdf', (req, res) => {
   doc.text(`R$ ${fmt2(order.total)}`, 465, y + 2, { width: 90, align: 'right' });
   y += 30;
 
-  // Payment & Freight
   if (y > 680) { doc.addPage(); y = 50; }
   doc.moveTo(55, y).lineTo(pageW + 25, y).strokeColor('#e5e7eb').stroke();
   y += 12;
