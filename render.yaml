@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: fincontrol-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: https://client-beryl-delta-58.vercel.app
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_PATH
+        value: /opt/render/project/data/fincontrol.db
+    disk:
+      name: fincontrol-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1
