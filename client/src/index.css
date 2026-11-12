@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+body { @apply bg-gray-50 text-gray-900; }
+
+@layer components {
+  .btn-primary { @apply bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 disabled:opacity-50; }
+  .btn-secondary { @apply bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors duration-200; }
+  .btn-danger { @apply bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200; }
+  .btn-success { @apply bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200; }
+  .input-field { @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200; }
+  .card { @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6; }
+  .badge-paid { @apply bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full text-xs font-medium; }
+  .badge-pending { @apply bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full text-xs font-medium; }
+  .badge-overdue { @apply bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full text-xs font-medium; }
+}
