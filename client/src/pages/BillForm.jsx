@@ -19,6 +19,9 @@ export default function BillForm() {
   const [categories, setCategories] = useState([]);
   const [costCenters, setCostCenters] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [showSupplierList, setShowSupplierList] = useState(false);
   const [newCat, setNewCat] = useState('');
   const [showNewCat, setShowNewCat] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -26,8 +29,8 @@ export default function BillForm() {
   const [createdCount, setCreatedCount] = useState(0);
 
   useEffect(() => {
-    Promise.all([api.get('/categories'), api.get('/cost-centers'), api.get('/bank-accounts')]).then(([c, cc, ba]) => {
-      setCategories(c.data); setCostCenters(cc.data); setBankAccounts(ba.data);
+    Promise.all([api.get('/categories'), api.get('/cost-centers'), api.get('/bank-accounts'), api.get('/suppliers')]).then(([c, cc, ba, s]) => {
+      setCategories(c.data); setCostCenters(cc.data); setBankAccounts(ba.data); setSuppliers(s.data);
     });
     if (editId) {
       api.get(`/bills/${editId}`).then(r => setForm({ ...r.data, amount: String(r.data.amount), paid_at_sight: !!r.data.paid_at_sight }));
@@ -186,9 +189,23 @@ export default function BillForm() {
                 <p className="text-xs text-gray-400 mt-1">Será salva como: "{form.description} - Parcela 1/{installments}" ... "{form.description} - Parcela {installments}/{installments}"</p>
               )}
             </div>
-            <div>
+            <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-1">Fornecedor</label>
-              <input type="text" value={form.supplier} onChange={e => handleChange('supplier', e.target.value)} className="input-field" placeholder="Nome do fornecedor" />
+              <input type="text" value={form.supplier} onChange={e => { handleChange('supplier', e.target.value); setSupplierSearch(e.target.value); setShowSupplierList(true); }}
+                onFocus={() => setShowSupplierList(true)} onBlur={() => setTimeout(() => setShowSupplierList(false), 200)}
+                className="input-field" placeholder="Digite ou selecione um fornecedor" autoComplete="off" />
+              {showSupplierList && suppliers.length > 0 && (
+                <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {suppliers.filter(s => !form.supplier || s.name.toLowerCase().includes(form.supplier.toLowerCase()) || (s.trade_name && s.trade_name.toLowerCase().includes(form.supplier.toLowerCase()))).map(s => (
+                    <button key={s.id} type="button" onMouseDown={() => { handleChange('supplier', s.name); setShowSupplierList(false); }}
+                      className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm border-b border-gray-50 last:border-0">
+                      <span className="font-medium text-gray-800">{s.name}</span>
+                      {s.trade_name && <span className="text-gray-400 ml-2">({s.trade_name})</span>}
+                      {s.product_category && <span className="text-xs text-orange-500 ml-2">{s.product_category}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{installments > 1 ? 'Valor Total (R$) *' : 'Valor (R$) *'}</label>

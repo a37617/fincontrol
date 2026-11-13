@@ -16,6 +16,7 @@ import Installments from './pages/Installments';
 import Users from './pages/Users';
 import Incomes from './pages/Incomes';
 import Suppliers from './pages/Suppliers';
+import SupplierDetail from './pages/SupplierDetail';
 import PurchaseTabs from './pages/PurchaseTabs';
 import PurchaseOrders from './pages/PurchaseOrders';
 import CashFlow from './pages/CashFlow';
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
             <Route path="/incomes" element={<ProtectedRoute><Incomes /></ProtectedRoute>} />
             <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
+            <Route path="/suppliers/:id" element={<ProtectedRoute><SupplierDetail /></ProtectedRoute>} />
             <Route path="/purchase-tabs" element={<ProtectedRoute><PurchaseTabs /></ProtectedRoute>} />
             <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
             <Route path="/cashflow" element={<ProtectedRoute><CashFlow /></ProtectedRoute>} />

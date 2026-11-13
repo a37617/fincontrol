@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import Modal from '../components/Modal';
-import { Truck, Plus, Edit3, Trash2, Search, Phone, Mail, MapPin } from 'lucide-react';
+import { Truck, Plus, Edit3, Trash2, Search, Phone, Mail, MapPin, Eye } from 'lucide-react';
 
 export default function Suppliers() {
+  const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -87,6 +89,7 @@ export default function Suppliers() {
                 {s.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{s.city}{s.state ? `/${s.state}` : ''}</span>}
               </div>
               <div className="flex gap-2 mt-4 pt-3 border-t opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => navigate(`/suppliers/${s.id}`)} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Eye className="w-3 h-3" /> Detalhes</button>
                 <button onClick={() => handleEdit(s)} className="text-xs text-primary-600 hover:underline flex items-center gap-1"><Edit3 className="w-3 h-3" /> Editar</button>
                 <button onClick={() => handleDelete(s.id)} className="text-xs text-red-500 hover:underline flex items-center gap-1"><Trash2 className="w-3 h-3" /> Excluir</button>
               </div>

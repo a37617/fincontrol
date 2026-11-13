@@ -18,6 +18,38 @@ router.get('/:id', async (req, res) => {
   res.json(supplier);
 });
 
+router.get('/:id/history', async (req, res) => {
+  const supplier = await db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id);
+  if (!supplier) return res.status(404).json({ error: 'Fornecedor não encontrado' });
+
+  const namePattern = `%${supplier.name}%`;
+  const bills = await db.prepare(
+    `SELECT b.*, c.name as category_name FROM bills b LEFT JOIN categories c ON b.category_id = c.id
+     WHERE b.supplier LIKE ? ORDER BY b.due_date DESC`
+  ).all(namePattern);
+
+  const purchaseOrders = await db.prepare(
+    `SELECT * FROM purchase_orders WHERE supplier_id = ? OR supplier_name LIKE ? ORDER BY created_at DESC`
+  ).all(supplier.id, namePattern);
+
+  const purchaseTabs = await db.prepare(
+    `SELECT * FROM purchase_tabs WHERE supplier_id = ? OR supplier_name LIKE ? ORDER BY created_at DESC`
+  ).all(supplier.id, namePattern);
+
+  const priceHistory = await db.prepare(
+    `SELECT * FROM price_history WHERE supplier_id = ? OR supplier_name LIKE ? ORDER BY date DESC`
+  ).all(supplier.id, namePattern);
+
+  const totals = {
+    total_bills: bills.length,
+    total_amount: bills.reduce((s, b) => s + (b.amount || 0), 0),
+    total_paid: bills.filter(b => b.status === 'paid').reduce((s, b) => s + (b.amount || 0), 0),
+    total_pending: bills.filter(b => b.status !== 'paid').reduce((s, b) => s + (b.amount || 0), 0),
+  };
+
+  res.json({ supplier, bills, purchaseOrders, purchaseTabs, priceHistory, totals });
+});
+
 router.post('/', async (req, res) => {
   const { name, trade_name, cnpj, phone, email, contact_person, address, city, state, notes, product_category } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome é obrigatório' });
