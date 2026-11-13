@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../api';
 import { LayoutDashboard, FileText, FilePlus, Repeat, CreditCard, FolderTree, Package, Tags, Building2, Upload, BarChart3, LogOut, ListChecks, Users, TrendingUp, Truck, ShoppingBag, ClipboardList, Activity, Wallet, Database } from 'lucide-react';
 
 const links = [
@@ -61,9 +62,20 @@ export default function Sidebar() {
             <p className="text-gray-400 text-xs truncate">{user?.email}</p>
           </div>
         </div>
-        <a href="/api/backup/download" target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-blue-400 text-sm w-full rounded-lg hover:bg-sidebar-light transition-colors mb-1">
+        <button onClick={async () => {
+          try {
+            const res = await api.get('/backup/download', { responseType: 'blob' });
+            const url = window.URL.createObjectURL(res.data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `fincontrol-backup-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            localStorage.setItem('lastBackupDate', new Date().toISOString());
+          } catch { alert('Erro ao gerar backup'); }
+        }} className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-blue-400 text-sm w-full rounded-lg hover:bg-sidebar-light transition-colors mb-1">
           <Database className="w-4 h-4" /> Backup
-        </a>
+        </button>
         <button onClick={logout} className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-red-400 text-sm w-full rounded-lg hover:bg-sidebar-light transition-colors">
           <LogOut className="w-4 h-4" /> Sair
         </button>

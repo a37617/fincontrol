@@ -17,6 +17,8 @@ import {
   BarChart3,
   LineChart as LineIcon,
   RefreshCw,
+  Database,
+  X,
 } from 'lucide-react';
 import {
   PieChart,
@@ -155,6 +157,11 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('operational');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [backupDismissed, setBackupDismissed] = useState(false);
+
+  const lastBackup = localStorage.getItem('lastBackupDate');
+  const daysSinceBackup = lastBackup ? Math.floor((Date.now() - new Date(lastBackup).getTime()) / 86400000) : null;
+  const showBackupReminder = !backupDismissed && (daysSinceBackup === null || daysSinceBackup >= 7);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -240,6 +247,24 @@ export default function Dashboard() {
           Atualizar
         </button>
       </div>
+
+      {/* Backup Reminder */}
+      {showBackupReminder && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+            <Database className="w-5 h-5 text-amber-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-800">
+              {daysSinceBackup === null ? 'Voce ainda nao fez nenhum backup!' : `Ultimo backup foi ha ${daysSinceBackup} dias`}
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">Faca backup regularmente clicando em "Backup" no menu lateral</p>
+          </div>
+          <button onClick={() => setBackupDismissed(true)} className="p-1 rounded-lg hover:bg-amber-100 text-amber-400 hover:text-amber-600 transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
